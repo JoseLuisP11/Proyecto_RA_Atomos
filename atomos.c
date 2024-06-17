@@ -5,7 +5,19 @@
 #include <AR/ar.h>
 #include <math.h>
 
-static GLfloat electrones[6] = {0.0};
+static GLint increment = 1; /*Incremento rotacion por fotograma*/
+
+static GLint angleX = 0; /*Angulo de rotacion eje X*/
+static GLint angleY = 0; /*Angulo de rotacion eje Y*/
+static GLint angleZ = 0; /*Angulo de rotacion eje Z*/
+
+static GLint rotatingX = 0;         /*Rotacion eje X*/
+static GLint rotatingY = 0;         /*Rotacion eje Y*/
+static GLint rotatingZ = 0;         /*Rotacion eje Z*/
+static GLint rotatingDirection = 1; /*Rotacion sentido eje*/
+
+static GLfloat electrones[20] = {0.0};
+static GLint nobjects = 0;
 
 // ==== Definicion de estructuras ===================================
 struct TObject
@@ -15,11 +27,10 @@ struct TObject
     double width;            // Ancho del patron
     double center[2];        // Centro del patron
     double patt_trans[3][4]; // Matriz asociada al patron
-    void (*drawme)(void);    // Puntero a funcion drawme
+    void (*drawme)(int);     // Puntero a funcion drawme
 };
 
 struct TObject *objects = NULL;
-int nobjects = 0;
 
 void print_error(char *error)
 {
@@ -27,15 +38,6 @@ void print_error(char *error)
     exit(0);
 }
 
-void print_length(double patt_trans[3][4])
-{
-    double x = patt_trans[0][3];
-    double y = patt_trans[1][3];
-    double z = patt_trans[2][3];
-
-    double cm = sqrt(pow(x, 2) + pow(y, 2) + pow(z, 2)) / 10;
-    printf("La distancia es %f.\n", cm);
-}
 void update()
 {
 
@@ -48,8 +50,41 @@ void update()
     glutPostRedisplay();
 }
 
+// ======== rotation (rota los atomos) ====================================================
+void rotation()
+{
+    if (rotatingX == 1)
+    {
+        angleX = (angleX + increment * rotatingDirection) % 360;
+    }
+    else if (rotatingY == 1)
+    {
+        angleY = (angleY + increment * rotatingDirection) % 360;
+    }
+    else if (rotatingZ == 1)
+    {
+        angleZ = (angleZ + increment * rotatingDirection) % 360;
+    }
+    glutPostRedisplay();
+}
+
+// ======== keyboardSpecial (controla el sentido de rotacion horario o antihorario)===============================
+void keyboardSpecial(int key, int x, int y)
+{
+    if (key == GLUT_KEY_RIGHT)
+    {
+        rotatingDirection = 1;
+        glutIdleFunc(rotation);
+    }
+    else if (key == GLUT_KEY_LEFT)
+    {
+        rotatingDirection = -1;
+        glutIdleFunc(rotation);
+    }
+}
+
 // ==== addObject (Anade objeto a la lista de objetos) ==============
-void addObject(char *p, double w, double c[2], void (*drawme)(void))
+void addObject(char *p, double w, double c[2], void (*drawme)(int))
 {
     int pattid;
 
@@ -68,10 +103,10 @@ void addObject(char *p, double w, double c[2], void (*drawme)(void))
 }
 
 // ==== draw****** (Dibujado especifico de cada objeto) =============
-void drawOxigen(void)
+void drawOxigen(int nobject)
 {
     double gl_para[16]; // Esta matriz 4x4 es la usada por OpenGL
-    argConvGlpara(objects[0].patt_trans, gl_para);
+    argConvGlpara(objects[nobject].patt_trans, gl_para);
     glMatrixMode(GL_MODELVIEW);
     glLoadMatrixd(gl_para);
 
@@ -82,11 +117,12 @@ void drawOxigen(void)
     glutWireSphere(10, 500, 500);
 
     // Renderiza sus electrones
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 6; i++)
+    {
         glPushMatrix();
         glRotatef(electrones[i], 0.0, 0.0, 1.0); // Rotación del electrón alrededor del átomo
-        glRotatef(i * 45.0, 0.0, 0.0, 1.0); // Rotación para posicionar el electrón alrededor del átomo
-        glTranslatef(10 * 2.0, 0.0, 0.0); // Distancia del electrón al átomo
+        glRotatef(i * 45.0, 0.0, 0.0, 1.0);      // Rotación para posicionar el electrón alrededor del átomo
+        glTranslatef(10 * 2.0, 0.0, 0.0);        // Distancia del electrón al átomo
 
         // Renderiza el electrón
         glColor3ub(0, 0, 0);
@@ -96,44 +132,26 @@ void drawOxigen(void)
     }
 }
 
-void drawHydrogen(void)
+void drawHydrogen(int nobject)
 {
-    // glTranslatef(0.0, 0.0, 60.0);
-
-    // // Renderiza un átomo blanco
-    // glColor3ub(255, 255, 255);
-    // glutWireSphere(10, 500, 500);
-
-    // // Renderiza sus electrones
-    // for (int i = 0; i < 2; i++) {
-    //     glPushMatrix();
-    //     glRotatef(electrones[i], 0.0, 0.0, 1.0); // Rotación del electrón alrededor del átomo
-    //     glRotatef(i * 45.0, 0.0, 0.0, 1.0); // Rotación para posicionar el electrón alrededor del átomo
-    //     glTranslatef(10 * 2.0, 0.0, 0.0); // Distancia del electrón al átomo
-
-    //     // Renderiza el electrón
-    //     glColor3ub(0, 0, 0);
-    //     glutWireSphere(2, 500, 500);
-
-    //     glPopMatrix();
-    // }
     double gl_para[16]; // Esta matriz 4x4 es la usada por OpenGL
-    argConvGlpara(objects[1].patt_trans, gl_para);
+    argConvGlpara(objects[nobject].patt_trans, gl_para);
     glMatrixMode(GL_MODELVIEW);
     glLoadMatrixd(gl_para);
 
     glTranslatef(0.0, 0.0, 60.0);
 
-    // Renderiza un átomo rojo
-    glColor3ub(255, 0, 0);
+    // Renderiza un átomo blanco
+    glColor3ub(255, 255, 255);
     glutWireSphere(10, 500, 500);
 
     // Renderiza sus electrones
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 2; i++)
+    {
         glPushMatrix();
         glRotatef(electrones[i], 0.0, 0.0, 1.0); // Rotación del electrón alrededor del átomo
-        glRotatef(i * 45.0, 0.0, 0.0, 1.0); // Rotación para posicionar el electrón alrededor del átomo
-        glTranslatef(10 * 2.0, 0.0, 0.0); // Distancia del electrón al átomo
+        glRotatef(i * 45.0, 0.0, 0.0, 1.0);      // Rotación para posicionar el electrón alrededor del átomo
+        glTranslatef(10 * 2.0, 0.0, 0.0);        // Distancia del electrón al átomo
 
         // Renderiza el electrón
         glColor3ub(0, 0, 0);
@@ -148,19 +166,48 @@ void drawDioxygen(double y_axis)
     glTranslatef(0.0, y_axis, 0.0);
 
     glPushMatrix();
-        glTranslatef(0.0, 5.0, 60.0);
+    glTranslatef(0.0, 5.0, 60.0);
 
-        // Renderiza un átomo rojo
-        glColor3ub(255, 0, 0);
-        glutWireSphere(10, 500, 500);
+    // Renderiza un átomo rojo
+    glColor3ub(255, 0, 0);
+    glutWireSphere(10, 500, 500);
     glPopMatrix();
 
     glPushMatrix();
-        glTranslatef(0.0, -5.0, 60.0);
+    glTranslatef(0.0, -5.0, 60.0);
 
-        // Renderiza un átomo rojo
-        glColor3ub(255, 0, 0);
-        glutWireSphere(10, 500, 500);
+    // Renderiza un átomo rojo
+    glColor3ub(255, 0, 0);
+    glutWireSphere(10, 500, 500);
+    glPopMatrix();
+}
+
+void drawOxidane(double y_axis)
+{
+    glTranslatef(0.0, y_axis, 0.0);
+
+    glPushMatrix();
+    glTranslatef(0.0, 0.0, 60.0);
+
+    // Renderiza un átomo rojo
+    glColor3ub(255, 0, 0);
+    glutWireSphere(10, 500, 500);
+    glPopMatrix();
+
+    glPushMatrix();
+    glTranslatef(-5.0, -5.0, 60.0);
+
+    // Renderiza un átomo blanco
+    glColor3ub(255, 255, 255);
+    glutWireSphere(5, 500, 500);
+    glPopMatrix();
+
+    glPushMatrix();
+    glTranslatef(5.0, 5.0, 60.0);
+
+    // Renderiza un átomo blanco
+    glColor3ub(255, 255, 255);
+    glutWireSphere(5, 500, 500);
     glPopMatrix();
 }
 
@@ -183,6 +230,10 @@ static void keyboard(unsigned char key, int x, int y)
     case 'Q':
     case 'q':
         cleanup();
+        break;
+    case 'Z':
+    case 'z':
+        rotatingZ = !rotatingZ;
         break;
     }
 }
@@ -215,34 +266,47 @@ void draw(void)
     //     }
     // }
 
-    double dist01;                 // Distancia entre el objeto 0 y 1
+    double dist01; // Distancia entre el objeto 0 y 1
     double m[3][4], m2[3][4];
 
-    if (objects[0].visible && objects[1].visible) {
+    if (objects[0].visible && objects[1].visible)
+    {
         argConvGlpara(objects[0].patt_trans, gl_para);
         glMatrixMode(GL_MODELVIEW);
         glLoadMatrixd(gl_para);
 
         arUtilMatInv(objects[0].patt_trans, m);
         arUtilMatMul(m, objects[1].patt_trans, m2);
-        dist01 = sqrt(pow(m2[0][3],2)+pow(m2[1][3],2)+pow(m2[2][3],2));
-        printf ("Distancia objects[0] y objects[1]= %G\n", dist01);
-        if (dist01 < 120){
-            drawDioxygen(dist01/2);
-        } else {
-            objects[0].drawme(); // Llamamos a su función de dibujar
-            
-            objects[1].drawme(); // Llamamos a su función de dibujar   
+        dist01 = sqrt(pow(m2[0][3], 2) + pow(m2[1][3], 2) + pow(m2[2][3], 2));
+        printf("Distancia objects[0] y objects[1]= %G\n", dist01);
+        if (dist01 < 120)
+        {
+            drawOxidane(dist01 / 2);
+            // drawDioxygen(dist01/2);
         }
-    } else if (objects[0].visible){
+        else
+        {
+            objects[0].drawme(0); // Llamamos a su función de dibujar
 
-        objects[0].drawme(); // Llamamos a su función de dibujar
-    } else if (objects[1].visible){
+            objects[1].drawme(1); // Llamamos a su función de dibujar
+        }
+    }
+    else if (objects[0].visible)
+    {
 
-        objects[1].drawme(); // Llamamos a su función de dibujar
+        objects[0].drawme(0); // Llamamos a su función de dibujar
+    }
+    else if (objects[1].visible)
+    {
+
+        objects[1].drawme(0); // Llamamos a su función de dibujar
     }
 
-    update();
+    if (rotatingZ)
+    {
+        update();
+    }
+
     glDisable(GL_DEPTH_TEST);
 }
 
@@ -254,7 +318,7 @@ static void init(void)
     double c[2] = {0.0, 0.0}; // Centro de patron (por defecto)
 
     // Abrimos dispositivo de video
-    if (arVideoOpen("-dev=/dev/video0") < 0)
+    if (arVideoOpen("-dev=/dev/video2") < 0)
         exit(0);
     if (arVideoInqSize(&xsize, &ysize) < 0)
         exit(0);
@@ -315,18 +379,17 @@ static void mainLoop(void)
         }
 
         if (k != -1)
-        { // Si ha detectado el patron en algun sitio...
+        { // Si ha detectado el patron
             objects[i].visible = 1;
             arGetTransMat(&marker_info[k], objects[i].center,
                           objects[i].width, objects[i].patt_trans);
             // printf("El factor de confianza es %f.\n", marker_info[k].cf);
-            // print_length(patt_trans);
             printf("El patron es %d.\n", marker_info[k].id);
         }
         else
-        {
+        {   // El objeto no es visible
             objects[i].visible = 0;
-        } // El objeto no es visible
+        } 
     }
 
     draw();           // Dibujamos los objetos de la escena
@@ -341,5 +404,6 @@ int main(int argc, char **argv)
 
     arVideoCapStart();                     // Creamos un hilo para captura de video
     argMainLoop(NULL, keyboard, mainLoop); // Asociamos callbacks
+    glutSpecialFunc(keyboardSpecial);
     return (0);
 }

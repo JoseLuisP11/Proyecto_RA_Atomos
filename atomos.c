@@ -4,6 +4,8 @@
 #include <AR/param.h>
 #include <AR/ar.h>
 #include <math.h>
+#include <time.h>
+
 
 static GLint increment = 1; /*Incremento rotacion por fotograma*/
 
@@ -28,6 +30,8 @@ struct TObject
     double center[2];        // Centro del patron
     double patt_trans[3][4]; // Matriz asociada al patron
     void (*drawme)(int);     // Puntero a funcion drawme
+    int timer;
+
 };
 
 struct TObject *objects = NULL;
@@ -46,9 +50,62 @@ void update()
     {
         electrones[i] += 1.0; // Incremento de la rotación para cada electrón
     }
+
+    
+    for (int i = 0; i < nobjects; i++)
+    {
+        // if(objects[i].timer > 0 && (time(NULL) - objects[i].timer) > 3){
+        //     printf("3 segundos.\n");
+        // }
+
+        if(objects[i].timer > 0){
+
+            printf("%li segundos.\n", time(NULL) - objects[i].timer);
+        }
+
+    }
+
     /* Fuerza re-dibujado */
     glutPostRedisplay();
 }
+
+// Definir una función para convertir radianes a grados (opcional)
+double radians_to_degrees(double radians) {
+    return radians * (180.0 / 3.1415);
+}
+
+// ======== obtainZangle (obtiene la rotacion en el eje Z del objeto) ====================================================
+void obtainZangle(int id)
+{
+    double v[3];
+    float module=0.0;
+
+    // Obtenemos el angulo de rotacion
+    v[0] = objects[id].patt_trans[0][0]; 
+    v[1] = objects[id].patt_trans[1][0]; 
+    v[2] = objects[id].patt_trans[2][0]; 
+    
+    module = sqrt(pow(v[0],2)+pow(v[1],2)+pow(v[2],2));
+    v[0] = v[0]/module;  v[1] = v[1]/module; v[2] = v[2]/module; 
+
+    // Interpretación del ángulo
+    // if (fabs(angleZ) < 10) {
+    //     printf("La marca está en su posición original (0 grados).\n");
+    // } else if (fabs(angleZ - 180) < 10) {
+    //     printf("La marca está del revés (180 grados).\n");
+    // } else if (fabs(angleZ - 90) < 10) {
+    //     if (v[1] > 0) {
+    //         printf("La marca está girada hacia la derecha (90 grados).\n");
+    //     } else {
+    //         printf("La marca está girada hacia la izquierda (90 grados).\n");
+    //     }
+    // } else {
+    //     printf("La marca está en una orientación no clasificada.\n");
+    // }
+
+    angleZ = acos (v[0]) * 57.2958;   // Sexagesimales! * (180/PI)
+}
+
 
 // ======== rotation (rota los atomos) ====================================================
 void rotation()
@@ -278,7 +335,9 @@ void draw(void)
         arUtilMatInv(objects[0].patt_trans, m);
         arUtilMatMul(m, objects[1].patt_trans, m2);
         dist01 = sqrt(pow(m2[0][3], 2) + pow(m2[1][3], 2) + pow(m2[2][3], 2));
-        printf("Distancia objects[0] y objects[1]= %G\n", dist01);
+        // printf("Distancia objects[0] y objects[1]= %G\n", dist01);
+        obtainZangle(1);
+
         if (dist01 < 120)
         {
             drawOxidane(dist01 / 2);
@@ -287,19 +346,21 @@ void draw(void)
         else
         {
             objects[0].drawme(0); // Llamamos a su función de dibujar
-
+            objects[0].timer=time(NULL);
             objects[1].drawme(1); // Llamamos a su función de dibujar
+            objects[1].timer=time(NULL);
         }
     }
     else if (objects[0].visible)
     {
-
         objects[0].drawme(0); // Llamamos a su función de dibujar
+        objects[0].timer=time(NULL);
     }
     else if (objects[1].visible)
     {
-
+        obtainZangle(1);
         objects[1].drawme(0); // Llamamos a su función de dibujar
+        objects[1].timer=time(NULL);
     }
 
     if (rotatingZ)
@@ -328,7 +389,7 @@ static void init(void)
         print_error("Error en carga de parametros de camara\n");
 
     arParamChangeSize(&wparam, xsize, ysize, &cparam);
-    arInitCparam(&cparam); // Inicializamos la camara con "cparam"
+    arInitCparam(&cparam); // Inicializamos la camara con "cparam"  
 
     // Inicializamos la lista de objetos
     addObject("data/simple.patt", 85.0, c, drawOxigen);
@@ -384,7 +445,7 @@ static void mainLoop(void)
             arGetTransMat(&marker_info[k], objects[i].center,
                           objects[i].width, objects[i].patt_trans);
             // printf("El factor de confianza es %f.\n", marker_info[k].cf);
-            printf("El patron es %d.\n", marker_info[k].id);
+            // printf("El patron es %d.\n", marker_info[k].id);
         }
         else
         {   // El objeto no es visible

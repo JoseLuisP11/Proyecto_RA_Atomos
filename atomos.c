@@ -14,6 +14,7 @@ static GLint angleX = 0; /*Angulo de rotacion eje X*/
 static GLint angleY = 0; /*Angulo de rotacion eje Y*/
 static GLint angleZ = 0; /*Angulo de rotacion eje Z*/
 static GLint rotZ = 0;   /*Sentido rotacion eje Z; 0 para posicion original 0 grados, 1 izquierda, 2 derecha, 3 del reves, 4 no determinable*/
+static GLint fixed = 0;  
 
 static GLint rotatingX = 0;         /*Rotacion eje X*/
 static GLint rotatingY = 0;         /*Rotacion eje Y*/
@@ -22,6 +23,7 @@ static GLint rotatingDirection = 1; /*Rotacion sentido eje*/
 
 static GLfloat electrones[20] = {0.0};
 static GLint nobjects = 0;
+static GLint nobjectsMulti = 0;
 
 ARMultiMarkerInfoT  *mMarker; // Estructura global multimarca
 
@@ -34,11 +36,13 @@ struct TObject
     double center[2];        // Centro del patron
     double patt_trans[3][4]; // Matriz asociada al patron
     void (*drawme)(int);     // Puntero a funcion drawme
+    void (*drawmeM)(double);     // Puntero a funcion drawme de multipatron
     int timer;               // Temporizador para controlar apariciones de marcas  
     int markerType;          // Tipo de marcador; 0 para simple, 1 para multipatron
 };
 
 struct TObject *objects = NULL;
+struct TObject *objectsMulti = NULL;
 
 void print_error(char *error)
 {
@@ -149,6 +153,14 @@ void keyboardSpecial(int key, int x, int y)
     }
 }
 
+// ==== addObject (Anade objeto a la lista de objetos del multipatron) ==============
+void addObjectMulti(void (*drawme)(double))
+{
+    nobjectsMulti++;
+    objectsMulti = (struct TObject *) realloc(objectsMulti, sizeof(struct TObject) * nobjectsMulti);
+    objectsMulti[nobjectsMulti - 1].drawmeM = drawme;
+}
+
 // ==== addObject (Anade objeto a la lista de objetos) ==============
 void addObject(char *p, double w, double c[2], int markerType, void (*drawme)(int))
 {
@@ -156,14 +168,19 @@ void addObject(char *p, double w, double c[2], int markerType, void (*drawme)(in
 
     if (markerType == 0 && (pattid = arLoadPatt(p)) < 0)
         print_error("Error en carga de patron\n");
-    else if (markerType == 1 && (mMarker = arMultiReadConfigFile(p)) == NULL )
+    else if (markerType == 1 && (mMarker = arMultiReadConfigFile(p)) == NULL ){
         print_error("Error en carga de multipatron\n");
+    }
 
     nobjects++;
     objects = (struct TObject *)
         realloc(objects, sizeof(struct TObject) * nobjects);
 
-    objects[nobjects - 1].id = pattid;
+    if (markerType == 0){
+        objects[nobjects - 1].id = pattid;
+    } else {
+        objects[nobjects - 1].id = 999;
+    }
     objects[nobjects - 1].width = w;
     objects[nobjects - 1].center[0] = c[0];
     objects[nobjects - 1].center[1] = c[1];
@@ -174,7 +191,6 @@ void addObject(char *p, double w, double c[2], int markerType, void (*drawme)(in
 // ==== draw****** (Dibujado especifico de cada objeto) =============
 void drawOxigen(int nobject)
 {
-    printf("drawOxigen\n");
     double gl_para[16]; // Esta matriz 4x4 es la usada por OpenGL
     argConvGlpara(objects[nobject].patt_trans, gl_para);
     glMatrixMode(GL_MODELVIEW);
@@ -233,6 +249,7 @@ void drawHydrogen(int nobject)
 
 void drawDioxygen(double y_axis)
 {
+    printf("He entrado drawDioxygen \n");
     glTranslatef(y_axis, 0.0, 0.0);
 
     glPushMatrix();
@@ -313,44 +330,75 @@ void drawCarbonDioxide(double y_axis)
 
 void drawMulti(int nobject)
 {
-    // double gl_para[16]; // Esta matriz 4x4 es la usada por OpenGL
+    printf("drawMulti\n");
+    double gl_para[16]; // Esta matriz 4x4 es la usada por OpenGL
     // GLfloat material[]        = {1.0, 1.0, 1.0, 1.0};
     // GLfloat light_position[]  = {100.0,-200.0,200.0,0.0};
 
-    // argConvGlpara(mMarker->trans, gl_para);
-    // glMatrixMode(GL_MODELVIEW);
-    // glLoadMatrixd(gl_para);
+    argConvGlpara(mMarker->trans, gl_para);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadMatrixd(gl_para);
 
     // glEnable(GL_LIGHTING);  glEnable(GL_LIGHT0);
     // glLightfv(GL_LIGHT0, GL_POSITION, light_position);
-    
     // // Dibujar cubos en marcas
-    // for (int i = 0; i < mMarker->marker_num; i++)
-    // {
-    //     glPushMatrix(); // Guardamos la matriz actual
-    //     argConvGlpara(mMarker->marker[i].trans, gl_para);
-    //     glMultMatrixd(gl_para);
-    //     // if (mMarker->marker[i].visible < 0)
-    //     // { // No se ha detectado
-    //     //     material[0] = 1.0;
-    //     //     material[1] = 0.0;
-    //     //     material[2] = 0.0;
-    //     // }
-    //     // else
-    //     // { // Se ha detectado (ponemos color verde)
-    //     //     material[0] = 0.0;
-    //     //     material[1] = 1.0;
-    //     //     material[2] = 0.0;
-    //     // }
-    //     // glMaterialfv(GL_FRONT, GL_AMBIENT, material);
-    //     glTranslatef(0.0, 0.0, 25.0);
-    //     glutSolidCube(50.0);
-    //     glPopMatrix(); // Recuperamos la matriz anterior
-    // }
+    for (int i = 0; i < mMarker->marker_num && i < nobjectsMulti; i++)
+    {
+        glPushMatrix(); // Guardamos la matriz actual
+        argConvGlpara(mMarker->marker[i].trans, gl_para);
+        glMultMatrixd(gl_para);
+        objectsMulti[i].drawmeM(i);
+        // drawCarbonDioxide(0.0);
+        glPopMatrix(); // Recuperamos la matriz anterior
+    }
 
     // glDisable(GL_DEPTH_TEST);
 }
 
+void drawAtoms(double m[3][4], double distance)
+{
+    // printf("rotZ= %i\n", rotZ);
+    if (rotZ == 3){
+        // printf("AL REVES DIOXIGENO\n");
+        if (m[0][3] > 0){ // La marca 0 está a la derecha de la marca 1
+            drawDioxygen(distance/2);
+        } else { // Esta a la izquierda
+            drawDioxygen(-distance/2);
+        }
+// } else if (rotZ == 1){
+//     printf("IZQUIERDA X\n");
+    } else if (rotZ == 2){
+        // printf("DERECHA X\n");
+        if (m[0][3] > 0){ // La marca 0 está a la derecha de la marca 1
+            drawCarbonDioxide(distance/2);
+        } else { // Esta a la izquierda
+            drawCarbonDioxide(-distance/2);
+        }
+    } else {
+        // printf("NORMAL H2O VISIBLE\n");
+        if (m[0][3] > 0){ // La marca 0 está a la derecha de la marca 1
+            drawOxidane(distance/2);
+        } else { // Esta a la izquierda
+            drawOxidane(-distance/2);
+        }
+    }
+}
+
+void addAtomsMulti()
+{
+    if (rotZ == 3){
+        addObjectMulti(drawDioxygen);
+        printf("Nueva marca1\n");
+// } else if (rotZ == 1){
+    } else if (rotZ == 2){
+        addObjectMulti(drawCarbonDioxide);
+        printf("Nueva marca2\n");
+    } else {
+        addObjectMulti(drawOxidane);
+        printf("Nueva marca3\n");
+    }
+    // printf("Hola %f", objectsMulti[0].)
+}
 
 // ======== cleanup =================================================
 static void cleanup(void)
@@ -420,65 +468,53 @@ void draw(void)
         arUtilMatMul(m, objects[1].patt_trans, m2);
 
         dist01 = sqrt(pow(m2[0][3], 2) + pow(m2[1][3], 2) + pow(m2[2][3], 2));
-        printf("Distancia objects[0] y objects[1]= %G\n", dist01);
-        obtainZangle(1);
+        // printf("Distancia objects[0] y objects[1]= %G\n", dist01);
 
-        if (dist01 < 150)
+        // printf("Elemento m2[0][3]: %f\n", m2[0][3]); // Derecha izquierda
+        // printf("Elemento m2[1][3]: %f\n", m2[1][3]); // Arriba abajo
+        // printf("Elemento m2[2][3]: %f\n", m2[2][3]);
+
+        if (dist01 < 160)
         {
-            if (rotZ == 3){
-                // printf("AL REVES DIOXIGENO\n");
-                if (m2[1][3] > 0){ // La marca 0 está a la derecha de la marca 1
-                    drawDioxygen(dist01/2);
-                } else { // Esta a la izquierda
-                    drawDioxygen(-dist01/2);
-                }
-            // } else if (rotZ == 1){
-            //     printf("IZQUIERDA X\n");
-            } else if (rotZ == 2){
-                // printf("DERECHA X\n");
-                if (m2[1][3] > 0){ // La marca 0 está a la derecha de la marca 1
-                    drawCarbonDioxide(dist01/2);
-                } else { // Esta a la izquierda
-                    drawCarbonDioxide(-dist01/2);
-                }
-            } else {
-                // printf("NORMAL H2O\n");
-                if (m2[1][3] > 0){ // La marca 0 está a la derecha de la marca 1
-                    drawOxidane(dist01/2);
-                } else { // Esta a la izquierda
-                    drawOxidane(-dist01/2);
-                }
+            if (objects[2].visible){
+                obtainZangle(2);
+                objects[2].timer=time(NULL);
+                fixed = 0;
+                
+            } else if (objects[2].timer > 0 && (time(NULL) - objects[2].timer) > 5 && fixed == 0){
+                // printf("Timer: %i\n", objects[2].timer);
+                fixed = 1;
+                rotatingZ != rotatingZ;
+                printf("Baby tu ere mala\n");
+                addAtomsMulti();
             }
 
+            drawAtoms(m2, dist01);
         }
         else
         {
             objects[0].drawme(0); // Llamamos a su función de dibujar
-            objects[0].timer=time(NULL);
             objects[1].drawme(1); // Llamamos a su función de dibujar
-            objects[1].timer=time(NULL);
         }
     }
     else if (objects[0].visible)
     {
         objects[0].drawme(0); // Llamamos a su función de dibujar
-        objects[0].timer=time(NULL);
     }
     else if (objects[1].visible)
     {
-        obtainZangle(1);
         objects[1].drawme(1); // Llamamos a su función de dibujar
-        objects[1].timer=time(NULL);
-    }
-
-    if (objects[2].visible)
+    } else if (objects[2].visible) // Marca de rotación
     {
         printf("Nueva marca\n");
-        objects[2].drawme(2); // Llamamos a su función de dibujar
+        obtainZangle(2);
+        objects[2].timer=time(NULL);
     }
-
+    
+    // Multipatrón
     if (objects[3].visible)
     {
+        printf("Multipatron\n");
         objects[3].drawme(3); // Llamamos a su función de dibujar
     }
 
@@ -512,9 +548,11 @@ static void init(void)
 
     // Inicializamos la lista de objetos
     addObject("data/simple.patt", 85.0, c, 0, drawOxigen);
-    addObject("data/identic.patt", 85.0, c, 0, drawHydrogen);
+    // addObject("data/identic.patt", 85.0, c, 0, drawHydrogen);
+    addObject("data/4x4_28.patt", 85.0, c, 0, drawHydrogen);
     addObject("data/4x4_79.patt", 85.0, c, 0, drawOxigen);
     addObject("data/marker.dat", 0, c, 1, drawMulti);
+
 
     argInit(&cparam, 1.0, 0, 0, 0, 0); // Abrimos la ventana
 }
@@ -566,6 +604,8 @@ static void mainLoop(void)
             if (objects[i].markerType == 0){
                 arGetTransMat(&marker_info[k], objects[i].center, objects[i].width, objects[i].patt_trans);
             }
+            // printf("Num objeto %i.\n", i);
+            // printf("El factor de confianza es %f.\n", marker_info->cf);
         }
         else
         {   // El objeto no es visible o es multimarca

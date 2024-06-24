@@ -3,6 +3,7 @@
 #include <AR/video.h>
 #include <AR/param.h>
 #include <AR/ar.h>
+#include <AR/arMulti.h>
 #include <math.h>
 #include <time.h>
 
@@ -12,6 +13,7 @@ static GLint increment = 1; /*Incremento rotacion por fotograma*/
 static GLint angleX = 0; /*Angulo de rotacion eje X*/
 static GLint angleY = 0; /*Angulo de rotacion eje Y*/
 static GLint angleZ = 0; /*Angulo de rotacion eje Z*/
+static GLint rotZ = 0;   /*Sentido rotacion eje Z; 0 para posicion original 0 grados, 1 izquierda, 2 derecha, 3 del reves, 4 no determinable*/
 
 static GLint rotatingX = 0;         /*Rotacion eje X*/
 static GLint rotatingY = 0;         /*Rotacion eje Y*/
@@ -20,6 +22,8 @@ static GLint rotatingDirection = 1; /*Rotacion sentido eje*/
 
 static GLfloat electrones[20] = {0.0};
 static GLint nobjects = 0;
+
+ARMultiMarkerInfoT  *mMarker; // Estructura global multimarca
 
 // ==== Definicion de estructuras ===================================
 struct TObject
@@ -30,8 +34,8 @@ struct TObject
     double center[2];        // Centro del patron
     double patt_trans[3][4]; // Matriz asociada al patron
     void (*drawme)(int);     // Puntero a funcion drawme
-    int timer;
-
+    int timer;               // Temporizador para controlar apariciones de marcas  
+    int markerType;          // Tipo de marcador; 0 para simple, 1 para multipatron
 };
 
 struct TObject *objects = NULL;
@@ -89,19 +93,24 @@ void obtainZangle(int id)
     v[0] = v[0]/module;  v[1] = v[1]/module; v[2] = v[2]/module; 
 
     // Interpretación del ángulo
-    // if (fabs(angleZ) < 10) {
-    //     printf("La marca está en su posición original (0 grados).\n");
-    // } else if (fabs(angleZ - 180) < 10) {
-    //     printf("La marca está del revés (180 grados).\n");
-    // } else if (fabs(angleZ - 90) < 10) {
-    //     if (v[1] > 0) {
-    //         printf("La marca está girada hacia la derecha (90 grados).\n");
-    //     } else {
-    //         printf("La marca está girada hacia la izquierda (90 grados).\n");
-    //     }
-    // } else {
-    //     printf("La marca está en una orientación no clasificada.\n");
-    // }
+    if (fabs(angleZ) < 10) {
+        // printf("La marca está en su posición original (0 grados).\n");
+        rotZ = 0;
+    } else if (fabs(angleZ - 180) < 10) {
+        // printf("La marca está del revés (180 grados).\n");
+        rotZ = 3;
+    } else if (fabs(angleZ - 90) < 10) {
+        if (v[1] <= 0) {
+            // printf("La marca está girada hacia la izquierda (90 grados).\n");
+            rotZ = 1;
+        } else {
+            // printf("La marca está girada hacia la derecha (90 grados).\n");
+            rotZ = 2;
+        }
+    } else {
+        // printf("La marca está en una orientación no determinada.\n");
+        rotZ = 4;
+    }
 
     angleZ = acos (v[0]) * 57.2958;   // Sexagesimales! * (180/PI)
 }
@@ -141,12 +150,14 @@ void keyboardSpecial(int key, int x, int y)
 }
 
 // ==== addObject (Anade objeto a la lista de objetos) ==============
-void addObject(char *p, double w, double c[2], void (*drawme)(int))
+void addObject(char *p, double w, double c[2], int markerType, void (*drawme)(int))
 {
     int pattid;
 
-    if ((pattid = arLoadPatt(p)) < 0)
+    if (markerType == 0 && (pattid = arLoadPatt(p)) < 0)
         print_error("Error en carga de patron\n");
+    else if (markerType == 1 && (mMarker = arMultiReadConfigFile(p)) == NULL )
+        print_error("Error en carga de multipatron\n");
 
     nobjects++;
     objects = (struct TObject *)
@@ -156,12 +167,14 @@ void addObject(char *p, double w, double c[2], void (*drawme)(int))
     objects[nobjects - 1].width = w;
     objects[nobjects - 1].center[0] = c[0];
     objects[nobjects - 1].center[1] = c[1];
+    objects[nobjects - 1].markerType = markerType;
     objects[nobjects - 1].drawme = drawme;
 }
 
 // ==== draw****** (Dibujado especifico de cada objeto) =============
 void drawOxigen(int nobject)
 {
+    printf("drawOxigen\n");
     double gl_para[16]; // Esta matriz 4x4 es la usada por OpenGL
     argConvGlpara(objects[nobject].patt_trans, gl_para);
     glMatrixMode(GL_MODELVIEW);
@@ -220,7 +233,7 @@ void drawHydrogen(int nobject)
 
 void drawDioxygen(double y_axis)
 {
-    glTranslatef(0.0, y_axis, 0.0);
+    glTranslatef(y_axis, 0.0, 0.0);
 
     glPushMatrix();
     glTranslatef(0.0, 5.0, 60.0);
@@ -241,7 +254,7 @@ void drawDioxygen(double y_axis)
 
 void drawOxidane(double y_axis)
 {
-    glTranslatef(0.0, y_axis, 0.0);
+    glTranslatef(y_axis,  0.0, 0.0);
 
     glPushMatrix();
     glTranslatef(0.0, 0.0, 60.0);
@@ -267,6 +280,77 @@ void drawOxidane(double y_axis)
     glutWireSphere(5, 500, 500);
     glPopMatrix();
 }
+
+void drawCarbonDioxide(double y_axis)
+{
+    glTranslatef(y_axis, 0.0, 0.0);
+
+    glPushMatrix();
+    glTranslatef(0.0, 7.5, 60.0);
+
+    // Renderiza un átomo rojo
+    glColor3ub(255, 0, 0);
+    glutWireSphere(10, 500, 500);
+    glPopMatrix();
+
+    glPushMatrix();
+
+    glTranslatef(0.0, 0.0, 60.0);
+
+    // Renderiza un átomo negro
+    glColor3ub(0, 0, 0);
+    glutWireSphere(10, 500, 500);
+
+    glPopMatrix();
+
+    glTranslatef(0.0, -7.5, 60.0);
+
+    // Renderiza un átomo rojo
+    glColor3ub(255, 0, 0);
+    glutWireSphere(10, 500, 500);
+    glPopMatrix();
+}
+
+void drawMulti(int nobject)
+{
+    // double gl_para[16]; // Esta matriz 4x4 es la usada por OpenGL
+    // GLfloat material[]        = {1.0, 1.0, 1.0, 1.0};
+    // GLfloat light_position[]  = {100.0,-200.0,200.0,0.0};
+
+    // argConvGlpara(mMarker->trans, gl_para);
+    // glMatrixMode(GL_MODELVIEW);
+    // glLoadMatrixd(gl_para);
+
+    // glEnable(GL_LIGHTING);  glEnable(GL_LIGHT0);
+    // glLightfv(GL_LIGHT0, GL_POSITION, light_position);
+    
+    // // Dibujar cubos en marcas
+    // for (int i = 0; i < mMarker->marker_num; i++)
+    // {
+    //     glPushMatrix(); // Guardamos la matriz actual
+    //     argConvGlpara(mMarker->marker[i].trans, gl_para);
+    //     glMultMatrixd(gl_para);
+    //     // if (mMarker->marker[i].visible < 0)
+    //     // { // No se ha detectado
+    //     //     material[0] = 1.0;
+    //     //     material[1] = 0.0;
+    //     //     material[2] = 0.0;
+    //     // }
+    //     // else
+    //     // { // Se ha detectado (ponemos color verde)
+    //     //     material[0] = 0.0;
+    //     //     material[1] = 1.0;
+    //     //     material[2] = 0.0;
+    //     // }
+    //     // glMaterialfv(GL_FRONT, GL_AMBIENT, material);
+    //     glTranslatef(0.0, 0.0, 25.0);
+    //     glutSolidCube(50.0);
+    //     glPopMatrix(); // Recuperamos la matriz anterior
+    // }
+
+    // glDisable(GL_DEPTH_TEST);
+}
+
 
 // ======== cleanup =================================================
 static void cleanup(void)
@@ -334,14 +418,38 @@ void draw(void)
 
         arUtilMatInv(objects[0].patt_trans, m);
         arUtilMatMul(m, objects[1].patt_trans, m2);
+
         dist01 = sqrt(pow(m2[0][3], 2) + pow(m2[1][3], 2) + pow(m2[2][3], 2));
-        // printf("Distancia objects[0] y objects[1]= %G\n", dist01);
+        printf("Distancia objects[0] y objects[1]= %G\n", dist01);
         obtainZangle(1);
 
-        if (dist01 < 120)
+        if (dist01 < 150)
         {
-            drawOxidane(dist01 / 2);
-            // drawDioxygen(dist01/2);
+            if (rotZ == 3){
+                // printf("AL REVES DIOXIGENO\n");
+                if (m2[1][3] > 0){ // La marca 0 está a la derecha de la marca 1
+                    drawDioxygen(dist01/2);
+                } else { // Esta a la izquierda
+                    drawDioxygen(-dist01/2);
+                }
+            // } else if (rotZ == 1){
+            //     printf("IZQUIERDA X\n");
+            } else if (rotZ == 2){
+                // printf("DERECHA X\n");
+                if (m2[1][3] > 0){ // La marca 0 está a la derecha de la marca 1
+                    drawCarbonDioxide(dist01/2);
+                } else { // Esta a la izquierda
+                    drawCarbonDioxide(-dist01/2);
+                }
+            } else {
+                // printf("NORMAL H2O\n");
+                if (m2[1][3] > 0){ // La marca 0 está a la derecha de la marca 1
+                    drawOxidane(dist01/2);
+                } else { // Esta a la izquierda
+                    drawOxidane(-dist01/2);
+                }
+            }
+
         }
         else
         {
@@ -359,8 +467,19 @@ void draw(void)
     else if (objects[1].visible)
     {
         obtainZangle(1);
-        objects[1].drawme(0); // Llamamos a su función de dibujar
+        objects[1].drawme(1); // Llamamos a su función de dibujar
         objects[1].timer=time(NULL);
+    }
+
+    if (objects[2].visible)
+    {
+        printf("Nueva marca\n");
+        objects[2].drawme(2); // Llamamos a su función de dibujar
+    }
+
+    if (objects[3].visible)
+    {
+        objects[3].drawme(3); // Llamamos a su función de dibujar
     }
 
     if (rotatingZ)
@@ -392,8 +511,10 @@ static void init(void)
     arInitCparam(&cparam); // Inicializamos la camara con "cparam"  
 
     // Inicializamos la lista de objetos
-    addObject("data/simple.patt", 85.0, c, drawOxigen);
-    addObject("data/identic.patt", 85.0, c, drawHydrogen);
+    addObject("data/simple.patt", 85.0, c, 0, drawOxigen);
+    addObject("data/identic.patt", 85.0, c, 0, drawHydrogen);
+    addObject("data/4x4_79.patt", 85.0, c, 0, drawOxigen);
+    addObject("data/marker.dat", 0, c, 1, drawMulti);
 
     argInit(&cparam, 1.0, 0, 0, 0, 0); // Abrimos la ventana
 }
@@ -442,14 +563,19 @@ static void mainLoop(void)
         if (k != -1)
         { // Si ha detectado el patron
             objects[i].visible = 1;
-            arGetTransMat(&marker_info[k], objects[i].center,
-                          objects[i].width, objects[i].patt_trans);
-            // printf("El factor de confianza es %f.\n", marker_info[k].cf);
-            // printf("El patron es %d.\n", marker_info[k].id);
+            if (objects[i].markerType == 0){
+                arGetTransMat(&marker_info[k], objects[i].center, objects[i].width, objects[i].patt_trans);
+            }
         }
         else
-        {   // El objeto no es visible
+        {   // El objeto no es visible o es multimarca
             objects[i].visible = 0;
+
+            if(arMultiGetTransMat(marker_info, marker_num, mMarker) > 0) {
+                objects[i].visible = 1;
+                // printf("El factor de confianza es %f.\n", marker_info->cf);
+            }
+
         } 
     }
 

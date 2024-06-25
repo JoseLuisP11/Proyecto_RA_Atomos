@@ -7,8 +7,40 @@
 #include <math.h>
 #include <time.h>
 
+// Posiciones de las marcas en el array de la funcion init
+const int ATOMPAT1 = 0;
+const int ATOMPAT2 = 1;
+const int ROTPAT = 2;
+const int MULTPAT = 3;
+
+// Distancia entre el patron ATOMPAT1 y el ATOMPAT2
+const double dist01Const = 180;
+
+// Posiciones del eje z del patron ROTPAT
+const int UP = 0;
+const int LEFT = 1;
+const int RIGHT = 2;
+const int DOWN = 3;
+const int UNKNOWN = 4;
+
+
+const int selectionTime = 5; // Distancia entre el patron ATOMPAT1 y el ATOMPAT2
+const int thresholdM = 10;  // Umbral auxiliar para evitar zarandeos excesivos a la hora de dibujar atomos compuestos
+const int thresholdZAngle = 10;  // Umbral auxiliar para calcular más precisamente los cambios en el eje Z,
 
 static GLint increment = 1; /*Incremento rotacion por fotograma*/
+
+// Tamanyos esferas
+static GLfloat heightZ = 60.0; /*Altura por defecto de los atomos en el eje Z*/
+static GLfloat lessHeightZ = 50.0; /*Altura rebajada de los atomos en el eje Z*/
+static GLfloat defSlices = 500.0; /*Slices por defecto*/
+static GLfloat defStacks = 500.0; /*Stacks por defecto*/
+static GLfloat radElectron = 4.0; /*Radio por defecto del electron*/
+static GLfloat radAtom = 15.0; /*Radio por defecto del atomo basico*/
+static GLfloat radComAtom = 15.0; /*Radio por defecto del atomo compuesto*/
+static GLfloat distComAtom1 = 5.0; /*Traslacion para atomos compuestos eje Y*/
+static GLfloat distComAtom2 = 7.5; /*Traslacion para atomos compuestos eje Y*/
+static GLfloat distComAtom3 = 10.0; /*Traslacion para atomos compuestos eje Y*/
 
 static GLint angleX = 0; /*Angulo de rotacion eje X*/
 static GLint angleY = 0; /*Angulo de rotacion eje Y*/
@@ -31,24 +63,73 @@ ARMultiMarkerInfoT  *mMarker; // Estructura global multimarca
 struct TObject
 {
     int id;                  // Identificador del patron
-    int visible;             // Es visible el objeto?
+    int visible;             // ¿Es observable en la escena el objeto?
     double width;            // Ancho del patron
     double center[2];        // Centro del patron
     double patt_trans[3][4]; // Matriz asociada al patron
     void (*drawme)(int);     // Puntero a funcion drawme
-    void (*drawmeM)(double);     // Puntero a funcion drawme de multipatron
+    void (*drawmeM)(double, double); // Puntero a funcion drawme de multipatron
     int timer;               // Temporizador para controlar apariciones de marcas  
     int markerType;          // Tipo de marcador; 0 para simple, 1 para multipatron
 };
 
-struct TObject *objects = NULL;
-struct TObject *objectsMulti = NULL;
+struct TObject *objects = NULL;         // Lista de patrones
+struct TObject *objectsMulti = NULL;    // Lista de objetos para el multipatron
 
+// ======== print_error (termina la ejecución del programa devolviendo el error)===============================
 void print_error(char *error)
 {
     printf("%s\n", error);
     exit(0);
 }
+// ======== cleanup =================================================
+static void cleanup(void)
+{ // Libera recursos al salir ...
+    arVideoCapStop();
+    arVideoClose();
+    argCleanup();
+    free(objects);
+    exit(0);
+}
+
+
+// ======== keyboard ================================================
+static void keyboard(unsigned char key, int x, int y)
+{
+    switch (key)
+    {
+    case 0x1B:
+    case 'Q':
+    case 'q':
+        cleanup();
+        break;
+    case 'X':
+    case 'x':
+        rotatingX = !rotatingX;
+
+        printf("ROtating x %i\n", rotatingX);
+        break;
+    case 'Y':
+    case 'y':
+        rotatingY = !rotatingY;
+        break;
+    case 'Z':
+    case 'z':
+        rotatingZ = !rotatingZ;
+        break;
+    case 'A':
+    case 'a':
+        rotatingDirection = 1;
+        printf("Entro1.\n");
+        break;
+    case 'D':
+    case 'd':
+        rotatingDirection = -1;
+        break;
+    }
+}
+
+
 
 void update()
 {
@@ -59,30 +140,26 @@ void update()
         electrones[i] += 1.0; // Incremento de la rotación para cada electrón
     }
 
-    
-    for (int i = 0; i < nobjects; i++)
+    /* Rotacion de los atomos */
+    if (rotatingX == 1)
     {
-        // if(objects[i].timer > 0 && (time(NULL) - objects[i].timer) > 3){
-        //     printf("3 segundos.\n");
-        // }
-
-        if(objects[i].timer > 0){
-
-            printf("%li segundos.\n", time(NULL) - objects[i].timer);
-        }
-
+        printf("Entro2.\n");
+        angleX = (angleX + increment * rotatingDirection) % 360;
+    }
+    else if (rotatingY == 1)
+    {
+        angleY = (angleY + increment * rotatingDirection) % 360;
+    }
+    else if (rotatingZ == 1)
+    {
+        angleZ = (angleZ + increment * rotatingDirection) % 360;
     }
 
     /* Fuerza re-dibujado */
     glutPostRedisplay();
 }
 
-// Definir una función para convertir radianes a grados (opcional)
-double radians_to_degrees(double radians) {
-    return radians * (180.0 / 3.1415);
-}
-
-// ======== obtainZangle (obtiene la rotacion en el eje Z del objeto) ====================================================
+// ======== obtainZangle (obtiene la rotacion en el eje Z del patron) ====================================================
 void obtainZangle(int id)
 {
     double v[3];
@@ -96,76 +173,38 @@ void obtainZangle(int id)
     module = sqrt(pow(v[0],2)+pow(v[1],2)+pow(v[2],2));
     v[0] = v[0]/module;  v[1] = v[1]/module; v[2] = v[2]/module; 
 
+    double zAngle = acos (v[0]) * 57.2958;   // Sexagesimales * (180/PI)
+
     // Interpretación del ángulo
-    if (fabs(angleZ) < 10) {
-        // printf("La marca está en su posición original (0 grados).\n");
-        rotZ = 0;
-    } else if (fabs(angleZ - 180) < 10) {
-        // printf("La marca está del revés (180 grados).\n");
-        rotZ = 3;
-    } else if (fabs(angleZ - 90) < 10) {
+    if (fabs(zAngle) < thresholdZAngle) {
+        rotZ = UP;  // La marca está en su posición original
+    } else if (fabs(zAngle - 90) < thresholdZAngle) {
         if (v[1] <= 0) {
-            // printf("La marca está girada hacia la izquierda (90 grados).\n");
-            rotZ = 1;
+            rotZ = LEFT; // La marca está girada hacia la izquierda
         } else {
-            // printf("La marca está girada hacia la derecha (90 grados).\n");
-            rotZ = 2;
+            rotZ = RIGHT; // La marca está girada hacia la derecha
         }
+    } else if (fabs(zAngle - 180) < thresholdZAngle) {
+        rotZ = DOWN; // La marca está del revés (180 grados)
     } else {
-        // printf("La marca está en una orientación no determinada.\n");
-        rotZ = 4;
-    }
-
-    angleZ = acos (v[0]) * 57.2958;   // Sexagesimales! * (180/PI)
-}
-
-
-// ======== rotation (rota los atomos) ====================================================
-void rotation()
-{
-    if (rotatingX == 1)
-    {
-        angleX = (angleX + increment * rotatingDirection) % 360;
-    }
-    else if (rotatingY == 1)
-    {
-        angleY = (angleY + increment * rotatingDirection) % 360;
-    }
-    else if (rotatingZ == 1)
-    {
-        angleZ = (angleZ + increment * rotatingDirection) % 360;
-    }
-    glutPostRedisplay();
-}
-
-// ======== keyboardSpecial (controla el sentido de rotacion horario o antihorario)===============================
-void keyboardSpecial(int key, int x, int y)
-{
-    if (key == GLUT_KEY_RIGHT)
-    {
-        rotatingDirection = 1;
-        glutIdleFunc(rotation);
-    }
-    else if (key == GLUT_KEY_LEFT)
-    {
-        rotatingDirection = -1;
-        glutIdleFunc(rotation);
+        rotZ = UNKNOWN; // La marca está en una orientación no determinada.
     }
 }
 
-// ==== addObject (Anade objeto a la lista de objetos del multipatron) ==============
-void addObjectMulti(void (*drawme)(double))
+// ==== addObjectMulti (Anade objetos a la lista de objetos del multipatron) ==============
+void addObjectMulti(void (*drawme)(double,  double))
 {
-    nobjectsMulti++;
+    nobjectsMulti++;    // Se aumenta el numero de objetos de la lista de objetos del multipatron
     objectsMulti = (struct TObject *) realloc(objectsMulti, sizeof(struct TObject) * nobjectsMulti);
-    objectsMulti[nobjectsMulti - 1].drawmeM = drawme;
+    objectsMulti[nobjectsMulti - 1].drawmeM = drawme;   // Se guarda la funcion de dibujado
 }
 
-// ==== addObject (Anade objeto a la lista de objetos) ==============
+// ==== addObject (Anade objeto a la lista de patrones) ==============
 void addObject(char *p, double w, double c[2], int markerType, void (*drawme)(int))
 {
     int pattid;
 
+    // markerType == 0 si es un patron simple, markerType== 0 si es multipatron
     if (markerType == 0 && (pattid = arLoadPatt(p)) < 0)
         print_error("Error en carga de patron\n");
     else if (markerType == 1 && (mMarker = arMultiReadConfigFile(p)) == NULL ){
@@ -179,12 +218,13 @@ void addObject(char *p, double w, double c[2], int markerType, void (*drawme)(in
     if (markerType == 0){
         objects[nobjects - 1].id = pattid;
     } else {
+        // Dado que no se obtiene el número identidad del multipatrón, se asigna manualmente
         objects[nobjects - 1].id = 999;
     }
     objects[nobjects - 1].width = w;
     objects[nobjects - 1].center[0] = c[0];
     objects[nobjects - 1].center[1] = c[1];
-    objects[nobjects - 1].markerType = markerType;
+    objects[nobjects - 1].markerType = markerType;  // markerType == 0 si es un patron simple, markerType== 0 si es multipatron
     objects[nobjects - 1].drawme = drawme;
 }
 
@@ -196,11 +236,11 @@ void drawOxigen(int nobject)
     glMatrixMode(GL_MODELVIEW);
     glLoadMatrixd(gl_para);
 
-    glTranslatef(0.0, 0.0, 60.0);
 
-    // Renderiza un átomo rojo
+    // Renderiza un átomo de oxígeno
+    glTranslatef(0.0, 0.0, heightZ);
     glColor3ub(255, 0, 0);
-    glutWireSphere(10, 500, 500);
+    glutWireSphere(radAtom, defSlices, defStacks);
 
     // Renderiza sus electrones
     for (int i = 0; i < 6; i++)
@@ -208,11 +248,11 @@ void drawOxigen(int nobject)
         glPushMatrix();
         glRotatef(electrones[i], 0.0, 0.0, 1.0); // Rotación del electrón alrededor del átomo
         glRotatef(i * 45.0, 0.0, 0.0, 1.0);      // Rotación para posicionar el electrón alrededor del átomo
-        glTranslatef(10 * 2.0, 0.0, 0.0);        // Distancia del electrón al átomo
+        glTranslatef(radAtom * 2.0, 0.0, 0.0);        // Distancia del electrón al átomo
 
         // Renderiza el electrón
         glColor3ub(0, 0, 0);
-        glutWireSphere(2, 500, 500);
+        glutWireSphere(radElectron, defSlices, defStacks);
 
         glPopMatrix();
     }
@@ -225,11 +265,10 @@ void drawHydrogen(int nobject)
     glMatrixMode(GL_MODELVIEW);
     glLoadMatrixd(gl_para);
 
-    glTranslatef(0.0, 0.0, 60.0);
-
-    // Renderiza un átomo blanco
+    // Renderiza un átomo de hidrógeno
+    glTranslatef(0.0, 0.0, heightZ);
     glColor3ub(255, 255, 255);
-    glutWireSphere(10, 500, 500);
+    glutWireSphere(radAtom, defSlices, defStacks);
 
     // Renderiza sus electrones
     for (int i = 0; i < 2; i++)
@@ -237,202 +276,173 @@ void drawHydrogen(int nobject)
         glPushMatrix();
         glRotatef(electrones[i], 0.0, 0.0, 1.0); // Rotación del electrón alrededor del átomo
         glRotatef(i * 45.0, 0.0, 0.0, 1.0);      // Rotación para posicionar el electrón alrededor del átomo
-        glTranslatef(10 * 2.0, 0.0, 0.0);        // Distancia del electrón al átomo
+        glTranslatef(radAtom * 2.0, 0.0, 0.0);        // Distancia del electrón al átomo
 
         // Renderiza el electrón
         glColor3ub(0, 0, 0);
-        glutWireSphere(2, 500, 500);
+        glutWireSphere(radElectron, defSlices, defStacks);
 
         glPopMatrix();
     }
 }
 
-void drawDioxygen(double y_axis)
+void drawDioxygen(double x_axis, double y_axis)
 {
-    printf("He entrado drawDioxygen \n");
-    glTranslatef(y_axis, 0.0, 0.0);
+    glTranslatef(x_axis, y_axis, 0.0);
 
+    // Renderiza un átomo de oxígeno
     glPushMatrix();
-    glTranslatef(0.0, 5.0, 60.0);
-
-    // Renderiza un átomo rojo
+    glTranslatef(0.0, distComAtom2, heightZ);
     glColor3ub(255, 0, 0);
-    glutWireSphere(10, 500, 500);
+    glutWireSphere(radComAtom, defSlices, defStacks);
     glPopMatrix();
 
+    // Renderiza un átomo de oxígeno
     glPushMatrix();
-    glTranslatef(0.0, -5.0, 60.0);
-
-    // Renderiza un átomo rojo
+    glTranslatef(0.0, -distComAtom2, heightZ);
     glColor3ub(255, 0, 0);
-    glutWireSphere(10, 500, 500);
+    glutWireSphere(radComAtom, defSlices, defStacks);
     glPopMatrix();
 }
 
-void drawOxidane(double y_axis)
+void drawOxidane(double x_axis, double y_axis)
 {
-    glTranslatef(y_axis,  0.0, 0.0);
+    glRotatef(angleX, 1.0, 0.0, 0.0); // Rotación eje X
+    glRotatef(angleY, 0.0, 1.0, 0.0); // Rotación eje Y
+    glRotatef(angleZ, 0.0, 0.0, 1.0); // Rotación eje Z
+    glTranslatef(x_axis, y_axis, 0.0);
 
+    // Renderiza un átomo de oxígeno
     glPushMatrix();
-    glTranslatef(0.0, 0.0, 60.0);
-
-    // Renderiza un átomo rojo
+    glTranslatef(0.0, 0.0, heightZ);
     glColor3ub(255, 0, 0);
-    glutWireSphere(10, 500, 500);
+    glutWireSphere(radComAtom, defSlices, defStacks);
     glPopMatrix();
 
+    // Renderiza un átomo de hidrógeno
     glPushMatrix();
-    glTranslatef(-5.0, -5.0, 60.0);
-
-    // Renderiza un átomo blanco
+    glTranslatef(0, -distComAtom1, lessHeightZ);
     glColor3ub(255, 255, 255);
-    glutWireSphere(5, 500, 500);
+    glutWireSphere(radAtom, defSlices, defStacks);
     glPopMatrix();
 
+    // Renderiza un átomo de hidrógeno
     glPushMatrix();
-    glTranslatef(5.0, 5.0, 60.0);
-
-    // Renderiza un átomo blanco
+    glTranslatef(0, distComAtom1, lessHeightZ);
     glColor3ub(255, 255, 255);
-    glutWireSphere(5, 500, 500);
+    glutWireSphere(radAtom, defSlices, defStacks);
     glPopMatrix();
 }
 
-void drawCarbonDioxide(double y_axis)
+void drawCarbonDioxide(double x_axis, double y_axis)
 {
-    glTranslatef(y_axis, 0.0, 0.0);
+    glTranslatef(x_axis, y_axis, 0.0);
 
+    // Renderiza un átomo de oxígeno
     glPushMatrix();
-    glTranslatef(0.0, 7.5, 60.0);
-
-    // Renderiza un átomo rojo
+    glTranslatef(0.0, distComAtom2, heightZ);
     glColor3ub(255, 0, 0);
-    glutWireSphere(10, 500, 500);
+    glutWireSphere(radComAtom, defSlices, defStacks);
     glPopMatrix();
-
-    glPushMatrix();
-
-    glTranslatef(0.0, 0.0, 60.0);
 
     // Renderiza un átomo negro
+    glPushMatrix();
+    glTranslatef(0.0, 0.0, heightZ);
     glColor3ub(0, 0, 0);
-    glutWireSphere(10, 500, 500);
-
+    glutWireSphere(18, defSlices, defStacks);
     glPopMatrix();
 
-    glTranslatef(0.0, -7.5, 60.0);
-
-    // Renderiza un átomo rojo
+    // Renderiza un átomo de oxígeno
+    glPushMatrix();
+    glTranslatef(0.0, -distComAtom2, heightZ);
     glColor3ub(255, 0, 0);
-    glutWireSphere(10, 500, 500);
+    glutWireSphere(radComAtom, defSlices, defStacks);
     glPopMatrix();
 }
 
+void drawOzone(double x_axis, double y_axis)
+{
+    glTranslatef(x_axis, y_axis, 0.0);
+
+    // Renderiza un átomo de oxígeno
+    glPushMatrix();
+    glTranslatef(0.0, 0.0, heightZ);
+    glColor3ub(240, 0, 0);
+    glutWireSphere(radComAtom, defSlices, defStacks);
+    glPopMatrix();
+
+    // Renderiza un átomo de oxígeno
+    glPushMatrix();
+    glTranslatef(0, -distComAtom3, lessHeightZ);
+    glColor3ub(255, 0, 0);
+    glutWireSphere(radComAtom, defSlices, defStacks);
+    glPopMatrix();
+
+    // Renderiza un átomo de oxígeno
+    glPushMatrix();
+    glTranslatef(0, distComAtom3, lessHeightZ);
+    glColor3ub(255, 0, 0);
+    glutWireSphere(radComAtom, defSlices, defStacks);
+    glPopMatrix();
+}
+
+// Metodo para dibujar atomos compuestos en el multipatron
 void drawMulti(int nobject)
 {
-    printf("drawMulti\n");
     double gl_para[16]; // Esta matriz 4x4 es la usada por OpenGL
-    // GLfloat material[]        = {1.0, 1.0, 1.0, 1.0};
-    // GLfloat light_position[]  = {100.0,-200.0,200.0,0.0};
 
     argConvGlpara(mMarker->trans, gl_para);
     glMatrixMode(GL_MODELVIEW);
     glLoadMatrixd(gl_para);
 
-    // glEnable(GL_LIGHTING);  glEnable(GL_LIGHT0);
-    // glLightfv(GL_LIGHT0, GL_POSITION, light_position);
-    // // Dibujar cubos en marcas
+    // Se recorren todos los patrones del multipatron
     for (int i = 0; i < mMarker->marker_num && i < nobjectsMulti; i++)
     {
         glPushMatrix(); // Guardamos la matriz actual
         argConvGlpara(mMarker->marker[i].trans, gl_para);
         glMultMatrixd(gl_para);
-        objectsMulti[i].drawmeM(i);
-        // drawCarbonDioxide(0.0);
+        objectsMulti[i].drawmeM(i, i); // Se dibuja el atomo compuesto
         glPopMatrix(); // Recuperamos la matriz anterior
     }
-
-    // glDisable(GL_DEPTH_TEST);
 }
 
+// Metodo para dibujar atomos compuestos en funcion de la rotacion del patron ROTPAT
 void drawAtoms(double m[3][4], double distance)
 {
-    // printf("rotZ= %i\n", rotZ);
-    if (rotZ == 3){
-        // printf("AL REVES DIOXIGENO\n");
-        if (m[0][3] > 0){ // La marca 0 está a la derecha de la marca 1
-            drawDioxygen(distance/2);
-        } else { // Esta a la izquierda
-            drawDioxygen(-distance/2);
-        }
-// } else if (rotZ == 1){
-//     printf("IZQUIERDA X\n");
-    } else if (rotZ == 2){
-        // printf("DERECHA X\n");
-        if (m[0][3] > 0){ // La marca 0 está a la derecha de la marca 1
-            drawCarbonDioxide(distance/2);
-        } else { // Esta a la izquierda
-            drawCarbonDioxide(-distance/2);
-        }
-    } else {
-        // printf("NORMAL H2O VISIBLE\n");
-        if (m[0][3] > 0){ // La marca 0 está a la derecha de la marca 1
-            drawOxidane(distance/2);
-        } else { // Esta a la izquierda
-            drawOxidane(-distance/2);
-        }
+    if (rotZ == DOWN){ // La marca ROTPAT está del revés (180 grados)
+        drawDioxygen((fabs(m[0][3]) > thresholdM) ? trunc(m[0][3]/2) : 0, (fabs(m[1][3]) > thresholdM) ? trunc(m[1][3]/2) : 0);
+    } else if (rotZ == LEFT){ // La marca ROTPAT está girada hacia la izquierda
+        drawOzone((fabs(m[0][3]) > thresholdM) ? trunc(m[0][3]/2) : 0, (fabs(m[1][3]) > thresholdM) ? trunc(m[1][3]/2) : 0);
+    } else if (rotZ == RIGHT){ // La marca ROTPAT está girada hacia la derecha
+        drawCarbonDioxide((fabs(m[0][3]) > thresholdM) ? trunc(m[0][3]/2) : 0, (fabs(m[1][3]) > thresholdM) ? trunc(m[1][3]/2) : 0);
+    } else { // La marca ROTPAT está girada hacia cualquier otra direccion
+        drawOxidane((fabs(m[0][3]) > thresholdM) ? trunc(m[0][3]/2) : 0, (fabs(m[1][3]) > thresholdM) ? trunc(m[1][3]/2) : 0);
     }
 }
 
+// Metodo para añadir atomos compuestos a la lista del multipatron
 void addAtomsMulti()
 {
-    if (rotZ == 3){
+    if (rotZ == DOWN){
         addObjectMulti(drawDioxygen);
-        printf("Nueva marca1\n");
-// } else if (rotZ == 1){
-    } else if (rotZ == 2){
+        printf("Molécula de O2 añadida a la lista de objetos del multipatrón.\n");
+    } else if (rotZ == LEFT){ 
+        addObjectMulti(drawOzone);
+        printf("Molécula de O2 añadida a la lista de objetos del multipatrón.\n");    
+    } else if (rotZ == RIGHT){
         addObjectMulti(drawCarbonDioxide);
-        printf("Nueva marca2\n");
+        printf("Molécula de CO2 añadida a la lista de objetos del multipatrón.\n");
     } else {
         addObjectMulti(drawOxidane);
-        printf("Nueva marca3\n");
-    }
-    // printf("Hola %f", objectsMulti[0].)
-}
-
-// ======== cleanup =================================================
-static void cleanup(void)
-{ // Libera recursos al salir ...
-    arVideoCapStop();
-    arVideoClose();
-    argCleanup();
-    free(objects);
-    exit(0);
-}
-
-// ======== keyboard ================================================
-static void keyboard(unsigned char key, int x, int y)
-{
-    switch (key)
-    {
-    case 0x1B:
-    case 'Q':
-    case 'q':
-        cleanup();
-        break;
-    case 'Z':
-    case 'z':
-        rotatingZ = !rotatingZ;
-        break;
+        printf("Molécula de agua añadida a la lista de objetos del multipatrón.\n");
     }
 }
+
 
 // ======== draw ====================================================
 void draw(void)
 {
     double gl_para[16]; // Esta matriz 4x4 es la usada por OpenGL
-    GLfloat light_position[] = {100.0, -200.0, 200.0, 0.0};
-    int i;
 
     argDrawMode3D();              // Cambiamos el contexto a 3D
     argDraw3dCamera(0, 0);        // Y la vista de la camara a 3D
@@ -440,84 +450,58 @@ void draw(void)
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
 
-    // for (i = 0; i < nobjects; i++)
-    // {
-    //     if (objects[i].visible)
-    //     { // Si el objeto es visible
-    //         argConvGlpara(objects[i].patt_trans, gl_para);
-    //         glMatrixMode(GL_MODELVIEW);
-    //         glLoadMatrixd(gl_para); // Cargamos su matriz de transf.
-
-    //         // glEnable(GL_LIGHTING);
-    //         // glEnable(GL_LIGHT0);
-    //         // glLightfv(GL_LIGHT0, GL_POSITION, light_position);
-    //         // objects[i].drawme(); // Llamamos a su función de dibujar
-    //     }
-    // }
-
     double dist01; // Distancia entre el objeto 0 y 1
-    double m[3][4], m2[3][4];
+    double m[3][4], m2[3][4];   // Auxiliares para el calculo de la distancia
 
-    if (objects[0].visible && objects[1].visible)
+    if (objects[ATOMPAT1].visible && objects[ATOMPAT2].visible) // Si ambos patrones son visibles, se comprueba la distancia entre ellos
     {
-        argConvGlpara(objects[0].patt_trans, gl_para);
+        argConvGlpara(objects[ATOMPAT1].patt_trans, gl_para);
         glMatrixMode(GL_MODELVIEW);
         glLoadMatrixd(gl_para);
 
-        arUtilMatInv(objects[0].patt_trans, m);
-        arUtilMatMul(m, objects[1].patt_trans, m2);
+        arUtilMatInv(objects[ATOMPAT1].patt_trans, m);
+        arUtilMatMul(m, objects[ATOMPAT2].patt_trans, m2);
 
-        dist01 = sqrt(pow(m2[0][3], 2) + pow(m2[1][3], 2) + pow(m2[2][3], 2));
-        // printf("Distancia objects[0] y objects[1]= %G\n", dist01);
+        dist01 = sqrt(pow(m2[0][3], 2) + pow(m2[1][3], 2) + pow(m2[2][3], 2)); // Obtenemos la distancia entre ambos patrones
 
-        // printf("Elemento m2[0][3]: %f\n", m2[0][3]); // Derecha izquierda
-        // printf("Elemento m2[1][3]: %f\n", m2[1][3]); // Arriba abajo
-        // printf("Elemento m2[2][3]: %f\n", m2[2][3]);
-
-        if (dist01 < 160)
+        // Si la distancia es menor a la distancia constante de referencia, se dibuja el atomo combinado
+        if (dist01 < dist01Const)
         {
-            if (objects[2].visible){
-                obtainZangle(2);
-                objects[2].timer=time(NULL);
+            if (objects[ROTPAT].visible){ // Marca de rotación
+                obtainZangle(ROTPAT);   // Obtenemos el angulo de giro en el eje z de la marca
+                objects[ROTPAT].timer=time(NULL);
                 fixed = 0;
                 
-            } else if (objects[2].timer > 0 && (time(NULL) - objects[2].timer) > 5 && fixed == 0){
-                // printf("Timer: %i\n", objects[2].timer);
+            } else if (objects[ROTPAT].timer > 0 && (time(NULL) - objects[ROTPAT].timer) > selectionTime && fixed == 0){ 
+                // Si ha sido visto el patron de rotacion y la ultima vez ha sido hace mas tiempo que el selectionTime, se confirma el patron para el patron multimarca
                 fixed = 1;
-                rotatingZ != rotatingZ;
-                printf("Baby tu ere mala\n");
+                printf("Patrón seleccionado.\n");
                 addAtomsMulti();
             }
 
             drawAtoms(m2, dist01);
         }
-        else
+        else    // Si no, se dibujan por separado
         {
-            objects[0].drawme(0); // Llamamos a su función de dibujar
-            objects[1].drawme(1); // Llamamos a su función de dibujar
+            objects[ATOMPAT1].drawme(ATOMPAT1); // Llamamos a su función de dibujar
+            objects[ATOMPAT2].drawme(ATOMPAT2); // Llamamos a su función de dibujar
         }
     }
-    else if (objects[0].visible)
+    else if (objects[ATOMPAT1].visible)
     {
-        objects[0].drawme(0); // Llamamos a su función de dibujar
+        objects[ATOMPAT1].drawme(ATOMPAT1); // Llamamos a su función de dibujar
     }
-    else if (objects[1].visible)
+    else if (objects[ATOMPAT2].visible)
     {
-        objects[1].drawme(1); // Llamamos a su función de dibujar
-    } else if (objects[2].visible) // Marca de rotación
-    {
-        printf("Nueva marca\n");
-        obtainZangle(2);
-        objects[2].timer=time(NULL);
-    }
+        objects[ATOMPAT2].drawme(ATOMPAT2); // Llamamos a su función de dibujar
+    } 
     
-    // Multipatrón
-    if (objects[3].visible)
+    if (objects[MULTPAT].visible)  // Multipatrón
     {
-        printf("Multipatron\n");
-        objects[3].drawme(3); // Llamamos a su función de dibujar
+        objects[MULTPAT].drawme(3); // Llamamos a su función de dibujar
     }
 
+    // TODO:
     if (rotatingZ)
     {
         update();
@@ -546,13 +530,11 @@ static void init(void)
     arParamChangeSize(&wparam, xsize, ysize, &cparam);
     arInitCparam(&cparam); // Inicializamos la camara con "cparam"  
 
-    // Inicializamos la lista de objetos
-    addObject("data/simple.patt", 85.0, c, 0, drawOxigen);
-    // addObject("data/identic.patt", 85.0, c, 0, drawHydrogen);
-    addObject("data/4x4_28.patt", 85.0, c, 0, drawHydrogen);
-    addObject("data/4x4_79.patt", 85.0, c, 0, drawOxigen);
-    addObject("data/marker.dat", 0, c, 1, drawMulti);
-
+    // Inicializamos la lista de patrones
+    addObject("data/simple.patt", 85.0, c, 0, drawOxigen);      //  ATOMPAT1
+    addObject("data/4x4_28.patt", 85.0, c, 0, drawHydrogen);    //  ATOMPAT2
+    addObject("data/4x4_79.patt", 85.0, c, 0, NULL);            //  ROTPAT
+    addObject("data/marker.dat", 0, c, 1, drawMulti);           //  MULTPAT
 
     argInit(&cparam, 1.0, 0, 0, 0, 0); // Abrimos la ventana
 }
@@ -599,23 +581,20 @@ static void mainLoop(void)
         }
 
         if (k != -1)
-        { // Si ha detectado el patron
+        { // Si ha detectado el patron (no multimarca)
             objects[i].visible = 1;
             if (objects[i].markerType == 0){
                 arGetTransMat(&marker_info[k], objects[i].center, objects[i].width, objects[i].patt_trans);
             }
-            // printf("Num objeto %i.\n", i);
-            // printf("El factor de confianza es %f.\n", marker_info->cf);
         }
         else
         {   // El objeto no es visible o es multimarca
             objects[i].visible = 0;
 
+            // Reconocimiento patron multimarca
             if(arMultiGetTransMat(marker_info, marker_num, mMarker) > 0) {
                 objects[i].visible = 1;
-                // printf("El factor de confianza es %f.\n", marker_info->cf);
             }
-
         } 
     }
 
@@ -631,6 +610,5 @@ int main(int argc, char **argv)
 
     arVideoCapStart();                     // Creamos un hilo para captura de video
     argMainLoop(NULL, keyboard, mainLoop); // Asociamos callbacks
-    glutSpecialFunc(keyboardSpecial);
     return (0);
 }

@@ -382,7 +382,7 @@ void addAtomsMulti()
         printf("Molécula de O2 añadida a la lista de objetos del multipatrón.\n");
     } else if (rotZ == LEFT){ 
         addObjectMulti(drawOzone);
-        printf("Molécula de O2 añadida a la lista de objetos del multipatrón.\n");    
+        printf("Molécula de O3 añadida a la lista de objetos del multipatrón.\n");    
     } else if (rotZ == RIGHT){
         addObjectMulti(drawCarbonDioxide);
         printf("Molécula de CO2 añadida a la lista de objetos del multipatrón.\n");
@@ -407,7 +407,10 @@ void draw(void)
     double dist01; // Distancia entre el objeto 0 y 1
     double m[3][4], m2[3][4];   // Auxiliares para el calculo de la distancia
 
-    if (objects[ATOMPAT1].visible && objects[ATOMPAT2].visible) // Si ambos patrones son visibles, se comprueba la distancia entre ellos
+    if (objects[MULTPAT].visible)  // Multipatrón
+    {
+        objects[MULTPAT].drawme(3); // Llamamos a su función de dibujar
+    }else if (objects[ATOMPAT1].visible && objects[ATOMPAT2].visible) // Si ambos patrones son visibles, se comprueba la distancia entre ellos
     {
         argConvGlpara(objects[ATOMPAT1].patt_trans, gl_para);
         glMatrixMode(GL_MODELVIEW);
@@ -450,10 +453,6 @@ void draw(void)
         objects[ATOMPAT2].drawme(ATOMPAT2); // Llamamos a su función de dibujar
     } 
     
-    if (objects[MULTPAT].visible)  // Multipatrón
-    {
-        objects[MULTPAT].drawme(3); // Llamamos a su función de dibujar
-    }
 
     update();
 

@@ -42,15 +42,10 @@ static GLfloat distComAtom1 = 5.0; /*Traslacion para atomos compuestos eje Y*/
 static GLfloat distComAtom2 = 7.5; /*Traslacion para atomos compuestos eje Y*/
 static GLfloat distComAtom3 = 10.0; /*Traslacion para atomos compuestos eje Y*/
 
-static GLint angleX = 0; /*Angulo de rotacion eje X*/
-static GLint angleY = 0; /*Angulo de rotacion eje Y*/
-static GLint angleZ = 0; /*Angulo de rotacion eje Z*/
+
 static GLint rotZ = 0;   /*Sentido rotacion eje Z; 0 para posicion original 0 grados, 1 izquierda, 2 derecha, 3 del reves, 4 no determinable*/
 static GLint fixed = 0;  
 
-static GLint rotatingX = 0;         /*Rotacion eje X*/
-static GLint rotatingY = 0;         /*Rotacion eje Y*/
-static GLint rotatingZ = 0;         /*Rotacion eje Z*/
 static GLint rotatingDirection = 1; /*Rotacion sentido eje*/
 
 static GLfloat electrones[20] = {0.0};
@@ -103,29 +98,6 @@ static void keyboard(unsigned char key, int x, int y)
     case 'q':
         cleanup();
         break;
-    case 'X':
-    case 'x':
-        rotatingX = !rotatingX;
-
-        printf("ROtating x %i\n", rotatingX);
-        break;
-    case 'Y':
-    case 'y':
-        rotatingY = !rotatingY;
-        break;
-    case 'Z':
-    case 'z':
-        rotatingZ = !rotatingZ;
-        break;
-    case 'A':
-    case 'a':
-        rotatingDirection = 1;
-        printf("Entro1.\n");
-        break;
-    case 'D':
-    case 'd':
-        rotatingDirection = -1;
-        break;
     }
 }
 
@@ -138,21 +110,6 @@ void update()
     for (int i = 0; i < 6; i++)
     {
         electrones[i] += 1.0; // Incremento de la rotación para cada electrón
-    }
-
-    /* Rotacion de los atomos */
-    if (rotatingX == 1)
-    {
-        printf("Entro2.\n");
-        angleX = (angleX + increment * rotatingDirection) % 360;
-    }
-    else if (rotatingY == 1)
-    {
-        angleY = (angleY + increment * rotatingDirection) % 360;
-    }
-    else if (rotatingZ == 1)
-    {
-        angleZ = (angleZ + increment * rotatingDirection) % 360;
     }
 
     /* Fuerza re-dibujado */
@@ -307,9 +264,6 @@ void drawDioxygen(double x_axis, double y_axis)
 
 void drawOxidane(double x_axis, double y_axis)
 {
-    glRotatef(angleX, 1.0, 0.0, 0.0); // Rotación eje X
-    glRotatef(angleY, 0.0, 1.0, 0.0); // Rotación eje Y
-    glRotatef(angleZ, 0.0, 0.0, 1.0); // Rotación eje Z
     glTranslatef(x_axis, y_axis, 0.0);
 
     // Renderiza un átomo de oxígeno
@@ -501,11 +455,7 @@ void draw(void)
         objects[MULTPAT].drawme(3); // Llamamos a su función de dibujar
     }
 
-    // TODO:
-    if (rotatingZ)
-    {
-        update();
-    }
+    update();
 
     glDisable(GL_DEPTH_TEST);
 }

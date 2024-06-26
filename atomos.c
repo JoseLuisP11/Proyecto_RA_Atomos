@@ -340,6 +340,20 @@ void drawOzone(double x_axis, double y_axis)
     glPopMatrix();
 }
 
+// Metodo para dibujar atomos compuestos en funcion de la rotacion del patron ROTPAT
+void drawAtoms(double m[3][4], double distance)
+{
+    if (rotZ == DOWN){ // La marca ROTPAT está del revés (180 grados)
+        drawDioxygen((fabs(m[0][3]) > thresholdM) ? trunc(m[0][3]/2) : 0, (fabs(m[1][3]) > thresholdM) ? trunc(m[1][3]/2) : 0);
+    } else if (rotZ == LEFT){ // La marca ROTPAT está girada hacia la izquierda
+        drawOzone((fabs(m[0][3]) > thresholdM) ? trunc(m[0][3]/2) : 0, (fabs(m[1][3]) > thresholdM) ? trunc(m[1][3]/2) : 0);
+    } else if (rotZ == RIGHT){ // La marca ROTPAT está girada hacia la derecha
+        drawCarbonDioxide((fabs(m[0][3]) > thresholdM) ? trunc(m[0][3]/2) : 0, (fabs(m[1][3]) > thresholdM) ? trunc(m[1][3]/2) : 0);
+    } else { // La marca ROTPAT está girada hacia cualquier otra direccion
+        drawOxidane((fabs(m[0][3]) > thresholdM) ? trunc(m[0][3]/2) : 0, (fabs(m[1][3]) > thresholdM) ? trunc(m[1][3]/2) : 0);
+    }
+}
+
 // Metodo para dibujar atomos compuestos en el multipatron
 void drawMulti(int nobject)
 {
@@ -357,20 +371,6 @@ void drawMulti(int nobject)
         glMultMatrixd(gl_para);
         objectsMulti[i].drawmeM(i, i); // Se dibuja el atomo compuesto
         glPopMatrix(); // Recuperamos la matriz anterior
-    }
-}
-
-// Metodo para dibujar atomos compuestos en funcion de la rotacion del patron ROTPAT
-void drawAtoms(double m[3][4], double distance)
-{
-    if (rotZ == DOWN){ // La marca ROTPAT está del revés (180 grados)
-        drawDioxygen((fabs(m[0][3]) > thresholdM) ? trunc(m[0][3]/2) : 0, (fabs(m[1][3]) > thresholdM) ? trunc(m[1][3]/2) : 0);
-    } else if (rotZ == LEFT){ // La marca ROTPAT está girada hacia la izquierda
-        drawOzone((fabs(m[0][3]) > thresholdM) ? trunc(m[0][3]/2) : 0, (fabs(m[1][3]) > thresholdM) ? trunc(m[1][3]/2) : 0);
-    } else if (rotZ == RIGHT){ // La marca ROTPAT está girada hacia la derecha
-        drawCarbonDioxide((fabs(m[0][3]) > thresholdM) ? trunc(m[0][3]/2) : 0, (fabs(m[1][3]) > thresholdM) ? trunc(m[1][3]/2) : 0);
-    } else { // La marca ROTPAT está girada hacia cualquier otra direccion
-        drawOxidane((fabs(m[0][3]) > thresholdM) ? trunc(m[0][3]/2) : 0, (fabs(m[1][3]) > thresholdM) ? trunc(m[1][3]/2) : 0);
     }
 }
 

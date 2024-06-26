@@ -24,7 +24,7 @@ const int DOWN = 3;
 const int UNKNOWN = 4;
 
 
-const int selectionTime = 5; // Distancia entre el patron ATOMPAT1 y el ATOMPAT2
+const int selectionTime = 5; // Tiempo que tarda en ser seleccionado un patron
 const int thresholdM = 10;  // Umbral auxiliar para evitar zarandeos excesivos a la hora de dibujar atomos compuestos
 const int thresholdZAngle = 10;  // Umbral auxiliar para calcular más precisamente los cambios en el eje Z,
 
@@ -427,11 +427,11 @@ void draw(void)
             if (objects[ROTPAT].visible){ // Marca de rotación
                 obtainZangle(ROTPAT);   // Obtenemos el angulo de giro en el eje z de la marca
                 objects[ROTPAT].timer=time(NULL);
-                fixed = 0;
-                
-            } else if (objects[ROTPAT].timer > 0 && (time(NULL) - objects[ROTPAT].timer) > selectionTime && fixed == 0){ 
-                // Si ha sido visto el patron de rotacion y la ultima vez ha sido hace mas tiempo que el selectionTime, se confirma el patron para el patron multimarca
                 fixed = 1;
+                
+            } else if (objects[ROTPAT].timer > 0 && (time(NULL) - objects[ROTPAT].timer) > selectionTime && fixed == 1){ 
+                // Si ha sido visto el patron de rotacion y la ultima vez ha sido hace mas tiempo que el selectionTime, se confirma el patron para el patron multimarca
+                fixed = 0;
                 printf("Patrón seleccionado.\n");
                 addAtomsMulti();
             }

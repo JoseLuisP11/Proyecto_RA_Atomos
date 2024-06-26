@@ -48,6 +48,7 @@ static GLint fixed = 0;
 
 static GLint rotatingDirection = 1; /*Rotacion sentido eje*/
 
+/*Variables para electrones*/
 static GLfloat electrones[20] = {0.0};
 static GLint nobjects = 0;
 static GLint nobjectsMulti = 0;
